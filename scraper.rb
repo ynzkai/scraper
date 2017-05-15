@@ -49,7 +49,7 @@ class Scraper < Mechanize
           speed int,
           url varchar(512),
           release_date varchar(100),
-          available varchar(1)
+          available varchar(10)
         );
       SQL
     end
@@ -106,7 +106,7 @@ class Scraper < Mechanize
             row = nil, product["unique_id"], url, product["name"], product["price"], product["sale_price"], speed, product_url, product["release_date"], product["available"]
             db.execute "insert into #{table_name} values ( ?, ?, ? , ? , ? , ? , ? , ? , ? , ? )", row
 
-            puts "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"]].join(',')}"
+            puts "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
             seq += 1
           end
           # Now we're back at the original page.
@@ -139,8 +139,8 @@ class Scraper < Mechanize
     puts "start scraping filtering data..."
     process
     sql = <<-SQL
-      INSERT INTO first_day_products 
-      SELECT * FROM tmp_products a
+      INSERT INTO first_day_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
+      SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
       WHERE NOT EXISTS (select 1 from first_day_products b where a.unique_id = b.unique_id);
     SQL
     db.execute sql
@@ -160,29 +160,36 @@ class Scraper < Mechanize
     db.execute sql
     db.execute "VACUUM" # follow DELETE to clear unused space
 
+    # filter product items from newly_table
+    sql = <<-SQL
+      DELETE FROM newly_products
+      WHERE EXISTS (SELECT 1 FROM first_day_products a WHERE a.unique_id = newly_products.unique_id);
+    SQL
+    db.execute sql
+    db.execute "VACUUM" # follow DELETE to clear unused space
+
     puts "start generating newly-posted..."
     sql = <<-SQL
-      INSERT INTO newly_products
-      SELECT * FROM tmp_products
-      EXCEPT
-      SELECT * FROM newly_products    
+      INSERT INTO newly_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
+      SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
+      WHERE NOT EXISTS (select 1 from newly_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql
 
     sql = <<-SQL
       UPDATE newly_products SET available = 
       (SELECT a.available FROM tmp_products a where a.unique_id = newly_products.unique_id)
+      WHERE EXISTS (select 1 from tmp_products a where a.unique_id = newly_products.unique_id)
     SQL
     db.execute sql
 
     sql = <<-SQL
-      SELECT * FROM newly_products WHERE available != 'N'
-      EXCEPT
-      SELECT * FROM tmp_products
+      SELECT * FROM newly_products a WHERE a.available = 'Y'
+      AND NOT EXISTS (select 1 from tmp_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql do |row|
       available = check_available row[7] # product url
-      db.execute "UPDATE newly_products SET available='?'", available
+      db.execute "UPDATE newly_products SET available=?", available
     end
 
     puts "start generating CSV file..."
@@ -196,6 +203,10 @@ class Scraper < Mechanize
       end
     end
     puts "the file name is #{outfilename}"
+
+
+    db.execute "DELETE FROM newly_products WHERE available = 'N'"
+    db.execute "VACUUM" # follow DELETE to clear unused space
   end
 
   def self.outputfile
