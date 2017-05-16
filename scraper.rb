@@ -7,7 +7,7 @@ require 'sqlite3'
 require 'mechanize'
 
 
-pages = 5
+pages = 1
 intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
 
 
