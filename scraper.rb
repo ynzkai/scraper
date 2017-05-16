@@ -7,7 +7,7 @@ require 'sqlite3'
 require 'mechanize'
 
 
-pages = 1
+pages = 5
 intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
 
 
@@ -68,10 +68,11 @@ class Scraper < Mechanize
 
   def check_available(product_url)
     get(product_url)
+    sleep 5
     product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
     product = JSON.parse(product)
-    sleep 5
-    product["available"]
+    puts "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+    [product["available"], product["unique_id"]]
   end
 
   # get 5 pages every day, and insert product items into tmp_products table
@@ -188,8 +189,9 @@ class Scraper < Mechanize
       AND NOT EXISTS (select 1 from tmp_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql do |row|
-      available = check_available row[7] # product url
-      db.execute "UPDATE newly_products SET available=?", available
+      puts row.join ' : '
+      available, unique_id = check_available row[7] # product url
+      db.execute "UPDATE newly_products SET available=? where unique_id=?", available, unique_id
     end
 
     puts "start generating CSV file..."
