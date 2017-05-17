@@ -7,7 +7,7 @@ require 'sqlite3'
 require 'mechanize'
 
 
-pages = 1
+pages = 5
 intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
 
 
@@ -198,7 +198,15 @@ class Scraper < Mechanize
     SQL
     db.execute sql do |row|
       available, unique_id = check_available row[7] # product url
-      db.execute "UPDATE newly_products SET available=? where unique_id=?", available, unique_id
+
+      if available == 'N'
+        # speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).ceil
+        speed = (Date.parse(Time.now.to_s) - Date.parse(row[8])).round
+      else
+        speed = ""
+      end
+
+      db.execute "UPDATE newly_products SET available=?, speed=?  where unique_id=?", available, speed, unique_id
     end
 
     puts "start filtering sold products..."
