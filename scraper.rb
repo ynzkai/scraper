@@ -7,7 +7,7 @@ require 'sqlite3'
 require 'mechanize'
 
 
-pages = 5
+pages = 1
 intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
 
 
@@ -64,6 +64,13 @@ class Scraper < Mechanize
       );
     SQL
     db.execute categories_sql
+
+    sold_sql =<<-SQL
+      CREATE TABLE IF NOT EXISTS sold_products (
+        unique_id varchar(255)
+      );
+    SQL
+    db.execute sold_sql
   end
 
   def check_available(product_url)
@@ -99,7 +106,8 @@ class Scraper < Mechanize
             product = JSON.parse(product)
 
             if product["available"] == 'N'
-              speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).ceil
+              # speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).ceil
+              speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).round
             else
               speed = ""
             end
@@ -189,10 +197,16 @@ class Scraper < Mechanize
       AND NOT EXISTS (select 1 from tmp_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql do |row|
-      puts row.join ' : '
       available, unique_id = check_available row[7] # product url
       db.execute "UPDATE newly_products SET available=? where unique_id=?", available, unique_id
     end
+
+    puts "start filtering sold products..."
+    sql = <<-SQL
+      DELETE FROM newly_products
+      WHERE EXISTS (select 1 from sold_products a where a.unique_id = newly_products.unique_id)
+    SQL
+    db.execute sql
 
     puts "start generating CSV file..."
     sql = <<-SQL
@@ -206,6 +220,14 @@ class Scraper < Mechanize
     end
     puts "the file name is #{outfilename}"
 
+    puts "start updating sold products..."
+    sql = <<-SQL
+      INSERT INTO sold_products (unique_id)
+      select a.unique_id from newly_products a 
+      WHERE a.available = 'N'
+      AND NOT EXISTS (select 1 from sold_products b where a.unique_id = b.unique_id)
+    SQL
+    db.execute sql
 
     db.execute "DELETE FROM newly_products WHERE available = 'N'"
     db.execute "VACUUM" # follow DELETE to clear unused space
