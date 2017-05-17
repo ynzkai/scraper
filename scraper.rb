@@ -74,12 +74,17 @@ class Scraper < Mechanize
   end
 
   def check_available(product_url)
-    get(product_url)
-    sleep 5
-    product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
-    product = JSON.parse(product)
-    puts "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
-    [product["available"], product["unique_id"]]
+    begin
+      get(product_url)
+      sleep 1
+      product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
+      product = JSON.parse(product)
+      puts "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+      product["available"]
+    rescue => e
+      $stderr.puts "#{e.class}: #{e.message}"
+      'Y'
+    end
   end
 
   # get 5 pages every day, and insert product items into tmp_products table
@@ -197,7 +202,7 @@ class Scraper < Mechanize
       AND NOT EXISTS (select 1 from tmp_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql do |row|
-      available, unique_id = check_available row[7] # product url
+      available = check_available row[7] # product url
 
       if available == 'N'
         # speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).ceil
@@ -206,7 +211,7 @@ class Scraper < Mechanize
         speed = ""
       end
 
-      db.execute "UPDATE newly_products SET available=?, speed=?  where unique_id=?", available, speed, unique_id
+      db.execute "UPDATE newly_products SET available=?, speed=?  where unique_id=?", available, speed, row[1]
     end
 
     puts "start filtering sold products..."
@@ -275,7 +280,7 @@ if ARGV[0] == 'add-filter'
   exit
 end
 
-if ARGV[0] == 'outfile'
+if ARGV[0].chomp('\n').downcase == 'outfile'
   Scraper.outputfile
   exit
 end
