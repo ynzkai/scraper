@@ -5,9 +5,10 @@ require 'date'
 require 'csv'
 require 'sqlite3'
 require 'mechanize'
+require 'net/smtp'
 
 
-pages = 5
+pages = 1
 intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
 
 
@@ -23,10 +24,12 @@ class Scraper < Mechanize
     self.robots = false
     # self.open_timeout = 30
     # self.read_timeout = 30
+    self.request_headers[SecureRandom.hex(10)] = SecureRandom.hex(10)
 
     @url = url
     @pages = pages
-    @outfilename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
+    # @outfilename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
+    @outfilename = "output.csv"
     @db = SQLite3::Database.new Dbname
 
     create_table
@@ -102,6 +105,8 @@ class Scraper < Mechanize
       seq = 1
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
+
+        break if seq == 11
 
         begin
           transact do
@@ -259,6 +264,65 @@ class Scraper < Mechanize
       end
     end
     puts "the file name is #{filename}"
+    filename
+  end
+
+  def self.send_email(filename)
+    address = "ynzkai@gmail.com"
+    domain = "gmail.com"
+    server = "smtp.gmail.com"
+    account = address
+    password = "zk810327"
+    port = 465
+
+    filecontent = ::File.read(filename)
+    encodedcontent = [filecontent].pack("m") # base64
+    marker = "AUNIQUEMARKER"
+
+    body = <<-EOF
+    This is a test email to send an attachement.
+    EOF
+
+    # Define the main headers.
+    part1 = <<-EOF
+    From: <#{address}>
+    To: <#{address}>
+    Subject: Sending scraped data
+    MIME-Version: 1.0
+    Content-Type: multipart/mixed; boundary = #{marker}
+    --#{marker}
+    EOF
+
+    # Define the message action
+    part2 = <<-EOF
+    Content-Type: text/plain
+    Content-Transfer-Encoding:8bit
+
+    #{body}
+    --#{marker}
+    EOF
+
+    # Define the attachment section
+    part3 = <<-EOF
+    Content-Type: multipart/csv; name = \"#{filename}\"
+    Content-Transfer-Encoding:base64
+    Content-Disposition: attachment; filename = "#{filename}"
+
+    #{encodedcontent}
+    --#{marker}--
+    EOF
+
+    mailtext = part1 + part2 + part3
+
+    begin 
+      smtp = Net::SMTP.new(server, port)
+      smtp.enable_ssl
+      smtp.start(domain, account, password, :login) do |s|
+        s.sendmail(mailtext, address, ['zk24@sina.com'])
+      end
+    rescue Exception => e  
+      print "Exception occured: " + e.message
+    end  
   end
 end
 
@@ -271,10 +335,15 @@ if ARGV[0].chomp('\n').downcase == 'reset'
   exit
 end
 
+
 if ARGV[0] == 'add-filter'
-  if ARGV.length != 2
+  unless [2,3].include? ARGV.length
     puts "Please provide category URL."
   else
+    if ARGV.length == 3
+      pages = ARGV[2].to_i
+    end
+    puts "scrape #{pages} pages."
     Scraper.new(ARGV[1], pages).init_category
   end
   exit
@@ -285,13 +354,23 @@ if ARGV[0].chomp('\n').downcase == 'outfile'
   exit
 end
 
+if ARGV.length == 2
+  pages = ARGV[1].to_i
+  puts "scrape #{pages} pages."
+end
+
 while true
   if ARGV[0].nil?
     puts "please provide URL!"
     exit
   end
-
   Scraper.new(ARGV[0], pages).start
+
+  puts "sending email..."
+  filename = Scraper.outputfile
+  Scraper.send_email filename
+  `rm #{filename}`
+
   puts "waiting for next scraping..."
   sleep intervals
 end
