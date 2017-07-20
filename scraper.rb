@@ -314,7 +314,6 @@ end
 # categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
 
 while true
-  sq = 0
   ARGV.each do |url|
     # md5 = Digest::MD5.new
     # md5 << url
