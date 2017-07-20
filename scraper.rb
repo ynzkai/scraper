@@ -5,11 +5,13 @@ require 'date'
 require 'csv'
 require 'sqlite3'
 require 'mechanize'
-require 'net/smtp'
+require 'mail'
+require 'digest'
 
 
 pages = 1
-intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
+#intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
+intervals = 600
 
 
 class Scraper < Mechanize
@@ -106,7 +108,7 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
-        break if seq == 11
+        break if seq == 10 # for testing
 
         begin
           transact do
@@ -140,7 +142,8 @@ class Scraper < Mechanize
 
   # reset scraper, delete data.db file including all scraped data.
   def self.reset
-    `rm #{Dbname}`
+    # `rm #{Dbname}`
+    `rm data*`
     puts "The scraper is reseted. All scraped data have been delete!"
   end
 
@@ -165,7 +168,7 @@ class Scraper < Mechanize
     db.execute sql
   end
 
-  def start
+  def start(cate)
     puts "start scraping..."
     process
     puts "scraping done!"
@@ -205,6 +208,7 @@ class Scraper < Mechanize
     sql = <<-SQL
       SELECT * FROM newly_products a WHERE a.available = 'Y'
       AND NOT EXISTS (select 1 from tmp_products b where a.unique_id = b.unique_id)
+      AND a.category='#{cate}'
     SQL
     db.execute sql do |row|
       available = check_available row[7] # product url
@@ -226,17 +230,17 @@ class Scraper < Mechanize
     SQL
     db.execute sql
 
-    puts "start generating CSV file..."
-    sql = <<-SQL
-      SELECT * FROM newly_products order by release_date desc
-    SQL
-    CSV.open(outfilename, 'w+') do |csv|
-      csv << ["name", "sale_price", "speed", "url"]
-      db.execute(sql) do |row|
-        csv << [row[3], row[5], row[6], row[7]]
-      end
-    end
-    puts "the file name is #{outfilename}"
+    # puts "start generating CSV file..."
+    # sql = <<-SQL
+    #   SELECT * FROM newly_products order by release_date desc
+    # SQL
+    # CSV.open(outfilename, 'w+') do |csv|
+    #   csv << ["name", "sale_price", "speed", "url"]
+    #   db.execute(sql) do |row|
+    #     csv << [row[3], row[5], row[6], row[7]]
+    #   end
+    # end
+    # puts "the file name is #{outfilename}"
 
     puts "start updating sold products..."
     sql = <<-SQL
@@ -251,11 +255,17 @@ class Scraper < Mechanize
     db.execute "VACUUM" # follow DELETE to clear unused space
   end
 
-  def self.outputfile
+  def self.outputfile(cate = nil)
     db = SQLite3::Database.new Dbname
-    sql = <<-SQL
-      SELECT * FROM newly_products order by release_date desc
-    SQL
+    unless cate
+      sql = <<-SQL
+        SELECT * FROM newly_products where category='#{cate}' order by release_date desc
+      SQL
+    else
+      sql = <<-SQL
+        SELECT * FROM newly_products  order by release_date desc
+      SQL
+    end
     filename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
     CSV.open(filename, 'w+') do |csv|
       csv << ["name", "sale_price", "speed", "url"]
@@ -267,68 +277,8 @@ class Scraper < Mechanize
     filename
   end
 
-  def self.send_email(filename)
-    address = "ynzkai@gmail.com"
-    domain = "gmail.com"
-    server = "smtp.gmail.com"
-    account = address
-    password = "zk810327"
-    port = 465
-
-    filecontent = ::File.read(filename)
-    encodedcontent = [filecontent].pack("m") # base64
-    marker = "AUNIQUEMARKER"
-
-    body = <<-EOF
-    This is a test email to send an attachement.
-    EOF
-
-    # Define the main headers.
-    part1 = <<-EOF
-    From: <#{address}>
-    To: <#{address}>
-    Subject: Sending scraped data
-    MIME-Version: 1.0
-    Content-Type: multipart/mixed; boundary = #{marker}
-    --#{marker}
-    EOF
-
-    # Define the message action
-    part2 = <<-EOF
-    Content-Type: text/plain
-    Content-Transfer-Encoding:8bit
-
-    #{body}
-    --#{marker}
-    EOF
-
-    # Define the attachment section
-    part3 = <<-EOF
-    Content-Type: multipart/csv; name = \"#{filename}\"
-    Content-Transfer-Encoding:base64
-    Content-Disposition: attachment; filename = "#{filename}"
-
-    #{encodedcontent}
-    --#{marker}--
-    EOF
-
-    mailtext = part1 + part2 + part3
-
-    begin 
-      smtp = Net::SMTP.new(server, port)
-      smtp.enable_ssl
-      smtp.start(domain, account, password, :login) do |s|
-        s.sendmail(mailtext, address, ['zk24@sina.com'])
-      end
-    rescue Exception => e  
-      print "Exception occured: " + e.message
-    end  
-  end
 end
 
-# categories = ["https://www.therealreal.com/shop/women/handbags"]
-# categories = ["https://www.therealreal.com/sales/womens-jewelry?taxons%5B%5D=759"]
-# categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
 
 if ARGV[0].chomp('\n').downcase == 'reset'
   Scraper.reset
@@ -359,17 +309,51 @@ if ARGV.length == 2
   puts "scrape #{pages} pages."
 end
 
-while true
-  if ARGV[0].nil?
-    puts "please provide URL!"
-    exit
-  end
-  Scraper.new(ARGV[0], pages).start
+# categories = ["https://www.therealreal.com/shop/women/handbags"]
+# categories = ["https://www.therealreal.com/sales/womens-jewelry?taxons%5B%5D=759"]
+# categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
 
-  puts "sending email..."
-  filename = Scraper.outputfile
-  Scraper.send_email filename
-  `rm #{filename}`
+while true
+  sq = 0
+  ARGV.each do |url|
+    # md5 = Digest::MD5.new
+    # md5 << url
+    # dbname = "data_#{md5}"
+   
+    Scraper.new(url, pages).start(url)
+
+    begin
+      puts "sending email..."
+      filename = Scraper.outputfile(url)
+      message = url
+
+      options = { address:              "smtp.gmail.com",
+                  port:                 587,
+                  domain:               'gmail.com',
+                  user_name:            'ynzkai@gmail.com',
+                  password:             'zk810327',
+                  authentication:       'login',
+                  enable_starttls_auto: true }
+
+      Mail.defaults do
+        delivery_method :smtp, options
+      end
+
+      mail = Mail.new do
+        from     'ynzkai@gmail.com'
+        to       'ynzkai@gmail.com'
+        subject  'Here is the csv file you wanted'
+        body     ''
+        add_file :filename => 'output.csv', :content => ::File.read(filename)
+      end
+
+      mail.deliver
+
+      `rm #{filename}`
+    rescue => e
+      $stderr.puts "#{e.class}: #{e.message}"
+    end
+  end
 
   puts "waiting for next scraping..."
   sleep intervals
