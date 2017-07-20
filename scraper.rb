@@ -9,11 +9,6 @@ require 'mail'
 require 'digest'
 
 
-pages = 1
-#intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
-intervals = 600
-
-
 class Scraper < Mechanize
   Dbname = "data.db"
 
@@ -304,14 +299,13 @@ if ARGV[0].chomp('\n').downcase == 'outfile'
   exit
 end
 
-if ARGV.length == 2
-  pages = ARGV[1].to_i
-  puts "scrape #{pages} pages."
-end
-
 # categories = ["https://www.therealreal.com/shop/women/handbags"]
 # categories = ["https://www.therealreal.com/sales/womens-jewelry?taxons%5B%5D=759"]
 # categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
+
+pages =  ARGV.pop.to_i
+#intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
+intervals = 600
 
 while true
   ARGV.each do |url|
@@ -348,10 +342,11 @@ while true
 
       mail.deliver
 
-      `rm #{filename}`
     rescue => e
       $stderr.puts "#{e.class}: #{e.message}"
     end
+
+    `rm #{filename}`
   end
 
   puts "waiting for next scraping..."
