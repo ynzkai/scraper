@@ -6,8 +6,6 @@ require 'csv'
 require 'sqlite3'
 require 'mechanize'
 require 'mail'
-require 'digest'
-
 
 class Scraper < Mechanize
   Dbname = "data.db"
@@ -79,7 +77,7 @@ class Scraper < Mechanize
       sleep 1
       product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
       product = JSON.parse(product)
-      puts "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+      prompt "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
       product["available"]
     rescue => e
       $stderr.puts "#{e.class}: #{e.message}"
@@ -97,13 +95,9 @@ class Scraper < Mechanize
       page_link = url + sufix + "#{index}"
       get(page_link)
 
-      # puts "page #{index}: #{page_link}"
-
       seq = 1
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
-
-        break if seq == 10 # for testing
 
         begin
           transact do
@@ -122,7 +116,7 @@ class Scraper < Mechanize
             row = nil, product["unique_id"], url, product["name"], product["price"], product["sale_price"], speed, product_url, product["release_date"], product["available"]
             db.execute "insert into #{table_name} values ( ?, ?, ? , ? , ? , ? , ? , ? , ? , ? )", row
 
-            puts "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+            prompt "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
             seq += 1
           end
           # Now we're back at the original page.
@@ -139,21 +133,13 @@ class Scraper < Mechanize
   def self.reset
     # `rm #{Dbname}`
     `rm data*`
-    puts "The scraper is reseted. All scraped data have been delete!"
+    prompt "The scraper is reseted. All scraped data have been delete!"
   end
 
   # add new category
   def init_category #(category)
-    # row = db.get_first_row("select * from categories where category='#{category}'")
-    # if row.nil?
-    #   db.execute "INSERT INTO categories (category) values(#{category});"
-    #   puts "the category is saved."
-    # else
-    #   puts "this category has been added."
-    #   return
-    # end
 
-    puts "start scraping filtering data..."
+    prompt "start scraping filtering data..."
     process
     sql = <<-SQL
       INSERT INTO first_day_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
@@ -164,11 +150,11 @@ class Scraper < Mechanize
   end
 
   def start(cate)
-    puts "start scraping..."
+    prompt "start scraping..."
     process
-    puts "scraping done!"
+    prompt "scraping done!"
 
-    puts "start filtering data..."
+    prompt "start filtering data..."
     # filter product items from first_day_table
     sql = <<-SQL
       DELETE FROM tmp_products
@@ -185,7 +171,7 @@ class Scraper < Mechanize
     db.execute sql
     db.execute "VACUUM" # follow DELETE to clear unused space
 
-    puts "start generating newly-posted..."
+    prompt "start generating newly-posted..."
     sql = <<-SQL
       INSERT INTO newly_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
       SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
@@ -218,14 +204,14 @@ class Scraper < Mechanize
       db.execute "UPDATE newly_products SET available=?, speed=?  where unique_id=?", available, speed, row[1]
     end
 
-    puts "start filtering sold products..."
+    prompt "start filtering sold products..."
     sql = <<-SQL
       DELETE FROM newly_products
       WHERE EXISTS (select 1 from sold_products a where a.unique_id = newly_products.unique_id)
     SQL
     db.execute sql
 
-    # puts "start generating CSV file..."
+    # prompt "start generating CSV file..."
     # sql = <<-SQL
     #   SELECT * FROM newly_products order by release_date desc
     # SQL
@@ -235,9 +221,9 @@ class Scraper < Mechanize
     #     csv << [row[3], row[5], row[6], row[7]]
     #   end
     # end
-    # puts "the file name is #{outfilename}"
+    # prompt "the file name is #{outfilename}"
 
-    puts "start updating sold products..."
+    prompt "start updating sold products..."
     sql = <<-SQL
       INSERT INTO sold_products (unique_id)
       select a.unique_id from newly_products a 
@@ -268,7 +254,7 @@ class Scraper < Mechanize
         csv << [row[3], row[5], row[6], row[7]]
       end
     end
-    puts "the file name is #{filename}"
+    prompt "the file name is #{filename}"
     filename
   end
 
@@ -283,12 +269,12 @@ end
 
 if ARGV[0] == 'add-filter'
   unless [2,3].include? ARGV.length
-    puts "Please provide category URL."
+    prompt "Please provide category URL."
   else
     if ARGV.length == 3
       pages = ARGV[2].to_i
     end
-    puts "scrape #{pages} pages."
+    prompt "scrape #{pages} pages."
     Scraper.new(ARGV[1], pages).init_category
   end
   exit
@@ -303,28 +289,31 @@ end
 # categories = ["https://www.therealreal.com/sales/womens-jewelry?taxons%5B%5D=759"]
 # categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
 
+password = ARGV.pop
+email = ARGV.pop
+flag =  ARGV.pop
 pages =  ARGV.pop.to_i
-#intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
-intervals = 600
+intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
+
+define_method(:prompt) do |message|
+  puts message if flag == "Y"
+end
 
 while true
   ARGV.each do |url|
-    # md5 = Digest::MD5.new
-    # md5 << url
-    # dbname = "data_#{md5}"
    
     Scraper.new(url, pages).start(url)
 
     begin
-      puts "sending email..."
+      prompt "sending email..."
       filename = Scraper.outputfile(url)
       message = url
 
       options = { address:              "smtp.gmail.com",
                   port:                 587,
                   domain:               'gmail.com',
-                  user_name:            'ynzkai@gmail.com',
-                  password:             'zk810327',
+                  user_name:            email,
+                  password:             password,
                   authentication:       'login',
                   enable_starttls_auto: true }
 
@@ -333,8 +322,8 @@ while true
       end
 
       mail = Mail.new do
-        from     'ynzkai@gmail.com'
-        to       'ynzkai@gmail.com'
+        from     email
+        to       email
         subject  'Here is the csv file you wanted'
         body     ''
         add_file :filename => 'output.csv', :content => ::File.read(filename)
@@ -349,6 +338,6 @@ while true
     `rm #{filename}`
   end
 
-  puts "waiting for next scraping..."
+  prompt "waiting for next scraping..."
   sleep intervals
 end
