@@ -41,6 +41,7 @@ class Scraper < Mechanize
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           unique_id varchar(255),
           category varchar(255),
+          categories varchar(255),
           name varchar(255),
           price decimal(10,2),
           sale_price decimal(10,2),
@@ -56,12 +57,12 @@ class Scraper < Mechanize
     db.execute sql("tmp_products")
     db.execute sql("newly_products")
 
-    categories_sql =<<-SQL
-      CREATE TABLE IF NOT EXISTS categories (
-        category varchar(512)
-      );
-    SQL
-    db.execute categories_sql
+    # categories_sql =<<-SQL
+    #   CREATE TABLE IF NOT EXISTS categories (
+    #     category varchar(512)
+    #   );
+    # SQL
+    # db.execute categories_sql
 
     sold_sql =<<-SQL
       CREATE TABLE IF NOT EXISTS sold_products (
@@ -99,6 +100,8 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
+        break if seq == 10
+
         begin
           transact do
             click link
@@ -113,8 +116,10 @@ class Scraper < Mechanize
               speed = ""
             end
 
-            row = nil, product["unique_id"], url, product["name"], product["price"], product["sale_price"], speed, product_url, product["release_date"], product["available"]
-            db.execute "insert into #{table_name} values ( ?, ?, ? , ? , ? , ? , ? , ? , ? , ? )", row
+            categories = product_url.match(/.+products\/(.*)/)[1].split("/")[0..-2].join(",")
+
+            row = nil, product["unique_id"], url, categories, product["name"], product["price"], product["sale_price"], speed, product_url, product["release_date"], product["available"]
+            db.execute "insert into #{table_name} values ( ?, ?, ?, ? , ? , ? , ? , ? , ? , ? , ? )", row
 
             prompt "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
             seq += 1
@@ -133,21 +138,21 @@ class Scraper < Mechanize
   def self.reset
     # `rm #{Dbname}`
     `rm data*`
-    prompt "The scraper is reseted. All scraped data have been delete!"
+    puts "The scraper is reseted. All scraped data have been delete!"
   end
 
   # add new category
-  def init_category #(category)
+  # def init_category #(category)
 
-    prompt "start scraping filtering data..."
-    process
-    sql = <<-SQL
-      INSERT INTO first_day_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
-      SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
-      WHERE NOT EXISTS (select 1 from first_day_products b where a.unique_id = b.unique_id);
-    SQL
-    db.execute sql
-  end
+  #   prompt "start scraping filtering data..."
+  #   process
+  #   sql = <<-SQL
+  #     INSERT INTO first_day_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
+  #     SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
+  #     WHERE NOT EXISTS (select 1 from first_day_products b where a.unique_id = b.unique_id);
+  #   SQL
+  #   db.execute sql
+  # end
 
   def start(cate)
     prompt "start scraping..."
@@ -173,8 +178,8 @@ class Scraper < Mechanize
 
     prompt "start generating newly-posted..."
     sql = <<-SQL
-      INSERT INTO newly_products (unique_id, category, name, price, sale_price, speed, url, release_date, available)
-      SELECT a.unique_id, a.category, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
+      INSERT INTO newly_products (unique_id, category, categories, name, price, sale_price, speed, url, release_date, available)
+      SELECT a.unique_id, a.category, categories, a.name, a.price, a.sale_price, a.speed, a.url, a.release_date, a.available FROM tmp_products a
       WHERE NOT EXISTS (select 1 from newly_products b where a.unique_id = b.unique_id)
     SQL
     db.execute sql
@@ -192,11 +197,11 @@ class Scraper < Mechanize
       AND a.category='#{cate}'
     SQL
     db.execute sql do |row|
-      available = check_available row[7] # product url
+      available = check_available row[8] # product url
 
       if available == 'N'
         # speed = (Date.parse(Time.now.to_s) - Date.parse(product["release_date"])).ceil
-        speed = (Date.parse(Time.now.to_s) - Date.parse(row[8])).round
+        speed = (Date.parse(Time.now.to_s) - Date.parse(row[9])).round
       else
         speed = ""
       end
@@ -249,9 +254,9 @@ class Scraper < Mechanize
     end
     filename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
     CSV.open(filename, 'w+') do |csv|
-      csv << ["name", "sale_price", "speed", "url"]
+      csv << ["categories", "name", "sale_price", "speed", "url"]
       db.execute(sql) do |row|
-        csv << [row[3], row[5], row[6], row[7]]
+        csv << [row[3], row[4], row[6], row[7], row[8]]
       end
     end
     prompt "the file name is #{filename}"
@@ -267,18 +272,18 @@ if ARGV[0].chomp('\n').downcase == 'reset'
 end
 
 
-if ARGV[0] == 'add-filter'
-  unless [2,3].include? ARGV.length
-    prompt "Please provide category URL."
-  else
-    if ARGV.length == 3
-      pages = ARGV[2].to_i
-    end
-    prompt "scrape #{pages} pages."
-    Scraper.new(ARGV[1], pages).init_category
-  end
-  exit
-end
+# if ARGV[0] == 'add-filter'
+#   unless [2,3].include? ARGV.length
+#     prompt "Please provide category URL."
+#   else
+#     if ARGV.length == 3
+#       pages = ARGV[2].to_i
+#     end
+#     prompt "scrape #{pages} pages."
+#     Scraper.new(ARGV[1], pages).init_category
+#   end
+#   exit
+# end
 
 if ARGV[0].chomp('\n').downcase == 'outfile'
   Scraper.outputfile
