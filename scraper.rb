@@ -299,8 +299,9 @@ email = ARGV.pop
 flag =  ARGV.pop
 pages =  ARGV.pop.to_i
 
-process_time = "05:00:00"
-touch_intval = 600
+time_a = "05:00:00"
+time_b = "05:20:00"
+interval = 600 # 10 minutes
 
 define_method(:prompt) do |message|
   puts message if flag == "Y"
@@ -309,7 +310,7 @@ end
 while true
   time = Time.now.strftime("%H:%M:%S")
 
-  if time == process_time
+  if time >= time_a and time <= time_b
     ARGV.each do |url|
      
       Scraper.new(url, pages).start(url)
@@ -350,5 +351,5 @@ while true
   end
 
   prompt "waiting for next scraping..."
-  sleep touch_intval 
+  sleep interval
 end
