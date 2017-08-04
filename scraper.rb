@@ -100,7 +100,7 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
-        break if seq == 10
+        # break if seq == 20
 
         begin
           transact do
@@ -298,51 +298,57 @@ password = ARGV.pop
 email = ARGV.pop
 flag =  ARGV.pop
 pages =  ARGV.pop.to_i
-intervals = 86400 # scraping cycle is 24 hours (86400 seconds)
+
+process_time = "05:00:00"
+touch_intval = 600
 
 define_method(:prompt) do |message|
   puts message if flag == "Y"
 end
 
 while true
-  ARGV.each do |url|
-   
-    Scraper.new(url, pages).start(url)
+  time = Time.now.strftime("%H:%M:%S")
 
-    begin
-      prompt "sending email..."
-      filename = Scraper.outputfile(url)
-      message = url
+  if time == process_time
+    ARGV.each do |url|
+     
+      Scraper.new(url, pages).start(url)
 
-      options = { address:              "smtp.gmail.com",
-                  port:                 587,
-                  domain:               'gmail.com',
-                  user_name:            email,
-                  password:             password,
-                  authentication:       'login',
-                  enable_starttls_auto: true }
+      begin
+        prompt "sending email..."
+        filename = Scraper.outputfile(url)
+        message = url
 
-      Mail.defaults do
-        delivery_method :smtp, options
+        options = { address:              "smtp.gmail.com",
+                    port:                 587,
+                    domain:               'gmail.com',
+                    user_name:            email,
+                    password:             password,
+                    authentication:       'login',
+                    enable_starttls_auto: true }
+
+        Mail.defaults do
+          delivery_method :smtp, options
+        end
+
+        mail = Mail.new do
+          from     email
+          to       email
+          subject  'Here is the csv file you wanted'
+          body     ''
+          add_file :filename => 'output.csv', :content => ::File.read(filename)
+        end
+
+        mail.deliver
+
+      rescue => e
+        $stderr.puts "#{e.class}: #{e.message}"
       end
 
-      mail = Mail.new do
-        from     email
-        to       email
-        subject  'Here is the csv file you wanted'
-        body     ''
-        add_file :filename => 'output.csv', :content => ::File.read(filename)
-      end
-
-      mail.deliver
-
-    rescue => e
-      $stderr.puts "#{e.class}: #{e.message}"
+      `rm #{filename}`
     end
-
-    `rm #{filename}`
   end
 
   prompt "waiting for next scraping..."
-  sleep intervals
+  sleep touch_intval 
 end
