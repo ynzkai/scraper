@@ -243,7 +243,7 @@ class Scraper < Mechanize
 
   def self.outputfile(cate = nil)
     db = SQLite3::Database.new Dbname
-    unless cate
+    if cate
       sql = <<-SQL
         SELECT * FROM newly_products where category='#{cate}' order by release_date desc
       SQL
