@@ -29,9 +29,6 @@ class Scraper < Mechanize
 
     create_table
 
-    # get(url)
-    # @item_number = page.search('div.product-search-form__nav-total').text.tr(",","").to_i
-    # @page_number = page.search('span.page-numbers').text.match(/of (\d+)/)[1].to_i
   end
 
   def create_table
@@ -100,7 +97,7 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
-        # break if seq == 20
+        # break if seq == 10
 
         begin
           transact do
@@ -216,18 +213,6 @@ class Scraper < Mechanize
     SQL
     db.execute sql
 
-    # prompt "start generating CSV file..."
-    # sql = <<-SQL
-    #   SELECT * FROM newly_products order by release_date desc
-    # SQL
-    # CSV.open(outfilename, 'w+') do |csv|
-    #   csv << ["name", "sale_price", "speed", "url"]
-    #   db.execute(sql) do |row|
-    #     csv << [row[3], row[5], row[6], row[7]]
-    #   end
-    # end
-    # prompt "the file name is #{outfilename}"
-
     prompt "start updating sold products..."
     sql = <<-SQL
       INSERT INTO sold_products (unique_id)
@@ -300,7 +285,7 @@ flag =  ARGV.pop
 pages =  ARGV.pop.to_i
 
 time_a = "05:00:00"
-time_b = "05:20:00"
+time_b = "17:20:00"
 interval = 600 # 10 minutes
 
 define_method(:prompt) do |message|
@@ -313,9 +298,9 @@ while true
   if time >= time_a and time <= time_b
     ARGV.each do |url|
      
-      Scraper.new(url, pages).start(url)
-
       begin
+        Scraper.new(url, pages).start(url)
+
         prompt "sending email..."
         filename = Scraper.outputfile(url)
         message = url
