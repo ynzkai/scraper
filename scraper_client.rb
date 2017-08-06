@@ -67,7 +67,7 @@ class Scraper < Mechanize
       sleep 1
       product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
       product = JSON.parse(product)
-      prompt "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+      puts "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
       product["available"]
     rescue => e
       $stderr.puts "#{e.class}: #{e.message}"
@@ -75,7 +75,6 @@ class Scraper < Mechanize
     end
   end
 
-  # get 5 pages every day, and insert product items into tmp_products table
   def process(table_name = "tmp_products")
     db.execute "DELETE FROM #{table_name};"
     db.execute "VACUUM" # follow DELETE to clear unused space
@@ -110,7 +109,7 @@ class Scraper < Mechanize
             row = nil, product["unique_id"], url, categories, product["name"], product["price"], product["sale_price"], speed, product_url, product["release_date"], product["available"]
             db.execute "insert into #{table_name} values ( ?, ?, ?, ? , ? , ? , ? , ? , ? , ? , ? )", row
 
-            prompt "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
+            puts "page#{index}:#{seq}> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
             seq += 1
           end
           # Now we're back at the original page.
@@ -126,26 +125,17 @@ class Scraper < Mechanize
 
   # reset scraper, delete data.db file including all scraped data.
   def self.reset
-    # `rm #{Dbname}`
-    `rm data*`
+    `rm #{Dbname}`
     puts "The scraper is reseted. All scraped data have been delete!"
   end
 
 
   def start(cate)
-    prompt "start scraping..."
+    puts "start scraping..."
     process
-    prompt "scraping done!"
+    puts "scraping done!"
 
-    prompt "start processing items..."
-
-    # filter product items from newly_table
-    # sql = <<-SQL
-    #   DELETE FROM newly_products
-    #   WHERE EXISTS (SELECT 1 FROM first_day_products a WHERE a.unique_id = newly_products.unique_id);
-    # SQL
-    # db.execute sql
-    # db.execute "VACUUM" # follow DELETE to clear unused space
+    puts "start processing items..."
 
     # add newly items
     sql = <<-SQL
@@ -230,7 +220,7 @@ class Scraper < Mechanize
         csv << [row[3], row[4], row[6], row[7], row[8]]
       end
     end
-    prompt "the file name is #{filename}"
+    puts "the file name is #{filename}"
     filename
   end
 
@@ -252,64 +242,15 @@ end
 # categories = ["https://www.therealreal.com/sales/womens-jewelry?taxons%5B%5D=759"]
 # categories = ["https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760"]
 
-password = ARGV.pop
-email = ARGV.pop
-flag =  ARGV.pop
 pages =  ARGV.pop.to_i
 
-time_a = "05:00:00"
-time_b = "20:20:00"
-interval = 600 # 10 minutes
-
-define_method(:prompt) do |message|
-  puts message if flag == "Y"
-end
-
-while true
-  time = Time.now.strftime("%H:%M:%S")
-
-  if time >= time_a and time <= time_b
-    ARGV.each do |url|
-     
-      begin
-        scraper = Scraper.new(url, pages)
-        scraper.start(url)
-        filename = Scraper.outputfile(url)
-        scraper.finish
-
-        prompt "sending email..."
-        message = url
-
-        options = { address:              "smtp.gmail.com",
-                    port:                 587,
-                    domain:               'gmail.com',
-                    user_name:            email,
-                    password:             password,
-                    authentication:       'login',
-                    enable_starttls_auto: true }
-
-        Mail.defaults do
-          delivery_method :smtp, options
-        end
-
-        mail = Mail.new do
-          from     email
-          to       email
-          subject  "csv file (#{url})"
-          body     ''
-          add_file :filename => 'output.csv', :content => ::File.read(filename)
-        end
-
-        mail.deliver
-
-      rescue => e
-        $stderr.puts "#{e.class}: #{e.message}"
-      end
-
-      `rm #{filename}`
-    end
+ARGV.each do |url|
+  begin
+    scraper = Scraper.new(url, pages)
+    scraper.start(url)
+    filename = Scraper.outputfile(url)
+    scraper.finish
+  rescue => e
+    $stderr.puts "#{e.class}: #{e.message}"
   end
-
-  prompt "waiting for next scraping..."
-  sleep interval
 end
