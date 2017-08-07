@@ -1,5 +1,8 @@
 #!/usr/bin/env ruby
 
+$LOAD_PATH << "/usr/local/rvm/gems/ruby-2.3.3"
+$LOAD_PATH << "/usr/local/rvm/gems/ruby-2.3.3@global"
+
 require 'json'
 require 'date'
 require 'csv'
@@ -89,7 +92,7 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
-        # break if seq == 10
+        # break if seq == 20
 
         begin
           transact do
@@ -257,59 +260,46 @@ email = ARGV.pop
 flag =  ARGV.pop
 pages =  ARGV.pop.to_i
 
-time_a = "05:00:00"
-time_b = "20:20:00"
-interval = 600 # 10 minutes
-
 define_method(:prompt) do |message|
   puts message if flag == "Y"
 end
 
-while true
-  time = Time.now.strftime("%H:%M:%S")
+ARGV.each do |url|
+ 
+  begin
+    scraper = Scraper.new(url, pages)
+    scraper.start(url)
+    filename = Scraper.outputfile(url)
+    scraper.finish
 
-  if time >= time_a and time <= time_b
-    ARGV.each do |url|
-     
-      begin
-        scraper = Scraper.new(url, pages)
-        scraper.start(url)
-        filename = Scraper.outputfile(url)
-        scraper.finish
+    prompt "sending email..."
+    message = url
 
-        prompt "sending email..."
-        message = url
+    options = { address:              "smtp.gmail.com",
+                port:                 587,
+                domain:               'gmail.com',
+                user_name:            email,
+                password:             password,
+                authentication:       'login',
+                enable_starttls_auto: true }
 
-        options = { address:              "smtp.gmail.com",
-                    port:                 587,
-                    domain:               'gmail.com',
-                    user_name:            email,
-                    password:             password,
-                    authentication:       'login',
-                    enable_starttls_auto: true }
-
-        Mail.defaults do
-          delivery_method :smtp, options
-        end
-
-        mail = Mail.new do
-          from     email
-          to       email
-          subject  "csv file (#{url})"
-          body     ''
-          add_file :filename => 'output.csv', :content => ::File.read(filename)
-        end
-
-        mail.deliver
-
-      rescue => e
-        $stderr.puts "#{e.class}: #{e.message}"
-      end
-
-      `rm #{filename}`
+    Mail.defaults do
+      delivery_method :smtp, options
     end
+
+    mail = Mail.new do
+      from     email
+      to       email
+      subject  "csv file (#{url})"
+      body     ''
+      add_file :filename => 'output.csv', :content => ::File.read(filename)
+    end
+
+    mail.deliver
+
+  rescue => e
+    $stderr.puts "#{e.class}: #{e.message}"
   end
 
-  prompt "waiting for next scraping..."
-  sleep interval
+  `rm #{filename}`
 end
