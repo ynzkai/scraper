@@ -1,8 +1,5 @@
 #!/usr/bin/env ruby
 
-$LOAD_PATH << "/usr/local/rvm/gems/ruby-2.3.3"
-$LOAD_PATH << "/usr/local/rvm/gems/ruby-2.3.3@global"
-
 require 'json'
 require 'date'
 require 'csv'
