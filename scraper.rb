@@ -9,6 +9,7 @@ require 'mail'
 
 class Scraper < Mechanize
   Dbname = "data.db"
+  SLEEP_SECONDS = 1
 
   attr_accessor :url, :pages, :outfilename
   attr_reader :db
@@ -64,7 +65,7 @@ class Scraper < Mechanize
   def check_available(product_url)
     begin
       get(product_url)
-      sleep 1
+      sleep SLEEP_SECONDS
       product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
       product = JSON.parse(product)
       prompt "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
@@ -84,6 +85,7 @@ class Scraper < Mechanize
       sufix = (url =~ /\?.+/) ? "&page=" : "?page="
       page_link = url + sufix + "#{index}"
       get(page_link)
+      sleep SLEEP_SECONDS
 
       seq = 1
       page.search('div.product-card__details a').each do |link|
@@ -94,6 +96,7 @@ class Scraper < Mechanize
         begin
           transact do
             click link
+	    sleep SLEEP_SECONDS
             # Do stuff, maybe click more links.
             product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
             product = JSON.parse(product)
@@ -120,7 +123,7 @@ class Scraper < Mechanize
         end
       end
     end
-    # sleep 5 if index % 7 == 0
+    # sleep 1 if index % 7 == 0
   end
 
 
