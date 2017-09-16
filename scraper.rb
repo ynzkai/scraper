@@ -7,8 +7,12 @@ require 'sqlite3'
 require 'mechanize'
 require 'mail'
 
+require './proxies.rb'
+
 class Scraper < Mechanize
   Dbname = "data.db"
+
+  Proxies = ::Proxies
 
   attr_accessor :url, :pages, :outfilename
   attr_reader :db
@@ -26,9 +30,33 @@ class Scraper < Mechanize
     # @outfilename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
     @outfilename = "output.csv"
     @db = SQLite3::Database.new Dbname
+    @current_proxy_index = 0
+    @get_count = 1
 
+:qa
     create_table
 
+  end
+
+  def get(uri, parameters = [], referer = nil, headers = {})
+    get_faile = false
+    begin
+      if @get_count % 6 == 0 or get_faile
+        index = @current_proxy_index >= Proxies.size ? 0 : @current_proxy_index
+        set_proxy(*Proxies[index])
+        puts "set proxy IP: #{Proxies[index][0]}"
+        @current_proxy_index += 1
+        @get_count = 1
+      end
+      begin
+        _page = super
+        get_faile = _page.nil?
+      rescue => e
+        puts e.message
+      end
+    end while get_faile
+    @get_count += 1
+    _page
   end
 
   def create_table
@@ -89,7 +117,7 @@ class Scraper < Mechanize
       page.search('div.product-card__details a').each do |link|
         product_url = (page.uri + link.attribute('href')).to_s
 
-        # break if seq == 10
+        # break if seq == 20
 
         begin
           transact do
@@ -257,59 +285,49 @@ email = ARGV.pop
 flag =  ARGV.pop
 pages =  ARGV.pop.to_i
 
-time_a = "05:00:00"
-time_b = "20:20:00"
-interval = 600 # 10 minutes
-
 define_method(:prompt) do |message|
   puts message if flag == "Y"
 end
 
-while true
-  time = Time.now.strftime("%H:%M:%S")
+ARGV.each do |url|
+ 
+  begin
+    scraper = Scraper.new(url, pages)
+    scraper.start(url)
+    filename = Scraper.outputfile(url)
+    scraper.finish
 
-  if time >= time_a and time <= time_b
-    ARGV.each do |url|
-     
-      begin
-        scraper = Scraper.new(url, pages)
-        scraper.start(url)
-        filename = Scraper.outputfile(url)
-        scraper.finish
+    prompt "sending email..."
+    message = url
 
-        prompt "sending email..."
-        message = url
+    options = { address:              "smtp.gmail.com",
+                port:                 587,
+                domain:               'gmail.com',
+                user_name:            email,
+                password:             password,
+                authentication:       'login',
+                enable_starttls_auto: true }
 
-        options = { address:              "smtp.gmail.com",
-                    port:                 587,
-                    domain:               'gmail.com',
-                    user_name:            email,
-                    password:             password,
-                    authentication:       'login',
-                    enable_starttls_auto: true }
-
-        Mail.defaults do
-          delivery_method :smtp, options
-        end
-
-        mail = Mail.new do
-          from     email
-          to       email
-          subject  "csv file (#{url})"
-          body     ''
-          add_file :filename => 'output.csv', :content => ::File.read(filename)
-        end
-
-        mail.deliver
-
-      rescue => e
-        $stderr.puts "#{e.class}: #{e.message}"
-      end
-
-      `rm #{filename}`
+    Mail.defaults do
+      delivery_method :smtp, options
     end
+
+    mail = Mail.new do
+      from     email
+      to       email
+      subject  "csv file (#{url})"
+      body     ''
+      add_file :filename => 'output.csv', :content => ::File.read(filename)
+    end
+
+    mail.deliver
+
+  rescue => e
+    $stderr.puts "#{e.class}: #{e.message}"
   end
 
-  prompt "waiting for next scraping..."
-  sleep interval
+  `rm #{filename}`
 end
+
+
+
