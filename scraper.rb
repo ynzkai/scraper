@@ -7,9 +7,13 @@ require 'sqlite3'
 require 'mechanize'
 require 'mail'
 
+require './proxies.rb'
+
 class Scraper < Mechanize
   Dbname = "data.db"
   SLEEP_SECONDS = 1
+
+  Proxies = ::Proxies
 
   attr_accessor :url, :pages, :outfilename
   attr_reader :db
@@ -27,9 +31,33 @@ class Scraper < Mechanize
     # @outfilename = "output#{Time.now.strftime('%Y%m%d%H%M%S')}.csv"
     @outfilename = "output.csv"
     @db = SQLite3::Database.new Dbname
+    @current_proxy_index = 0
+    @get_count = 1
 
+:qa
     create_table
 
+  end
+
+  def get(uri, parameters = [], referer = nil, headers = {})
+    get_faile = false
+    begin
+      if @get_count % 6 == 0 or get_faile
+        index = @current_proxy_index >= Proxies.size ? 0 : @current_proxy_index
+        set_proxy(*Proxies[index])
+        puts "set proxy IP: #{Proxies[index][0]}"
+        @current_proxy_index += 1
+        @get_count = 1
+      end
+      begin
+        _page = super
+        get_faile = _page.nil?
+      rescue => e
+        puts e.message
+      end
+    end while get_faile
+    @get_count += 1
+    _page
   end
 
   def create_table
@@ -303,3 +331,6 @@ ARGV.each do |url|
 
   `rm #{filename}`
 end
+
+
+

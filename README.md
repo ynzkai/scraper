@@ -19,6 +19,8 @@ ruby scraper.rb reset
 ##### output file
 ruby scraper.rb outfile
 
+https://accounts.google.com/DisplayUnlockCaptcha
+=======
 
 ### run scraper everyday
 vim /etc/crontab
