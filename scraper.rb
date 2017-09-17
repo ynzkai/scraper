@@ -39,22 +39,23 @@ class Scraper < Mechanize
   end
 
   def get(uri, parameters = [], referer = nil, headers = {})
-    get_faile = false
+    isFailed = false
     begin
-      if @get_count % 6 == 0 or get_faile
+      if @get_count % 6 == 0 or isFailed
         index = @current_proxy_index >= Proxies.size ? 0 : @current_proxy_index
         set_proxy(*Proxies[index])
         puts "set proxy IP: #{Proxies[index][0]}"
         @current_proxy_index += 1
-        @get_count = 1
+        @get_count = 1 unless isFailed
       end
       begin
         _page = super
-        get_faile = _page.nil?
+        isFailed = _page.nil?
       rescue => e
         puts e.message
+        isFailed = true
       end
-    end while get_faile
+    end while isFailed
     @get_count += 1
     _page
   end
