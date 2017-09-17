@@ -7,7 +7,7 @@ require 'sqlite3'
 require 'mechanize'
 require 'mail'
 
-require './proxies.rb'
+require File.expand_path('proxies.rb', __dir__)
 
 class Scraper < Mechanize
   Dbname = "data.db"
