@@ -45,7 +45,7 @@ class Scraper < Mechanize
       if @get_count % 6 == 0 or get_faile
         index = @current_proxy_index >= Proxies.size ? 0 : @current_proxy_index
         set_proxy(*Proxies[index])
-        puts "set proxy IP: #{Proxies[index][0]}"
+        prompt "set proxy IP: #{Proxies[index][0]}"
         @current_proxy_index += 1
         @get_count = 1
       end
@@ -93,7 +93,7 @@ class Scraper < Mechanize
   def check_available(product_url)
     begin
       get(product_url)
-      sleep SLEEP_SECONDS
+      # sleep SLEEP_SECONDS
       product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
       product = JSON.parse(product)
       prompt "> #{[product["name"], product["sale_price"], product["release_date"], product["available"]].join(',')}"
@@ -113,7 +113,7 @@ class Scraper < Mechanize
       sufix = (url =~ /\?.+/) ? "&page=" : "?page="
       page_link = url + sufix + "#{index}"
       get(page_link)
-      sleep SLEEP_SECONDS
+      # sleep SLEEP_SECONDS
 
       seq = 1
       page.search('div.product-card__details a').each do |link|
@@ -124,7 +124,7 @@ class Scraper < Mechanize
         begin
           transact do
             click link
-	    sleep SLEEP_SECONDS
+	    # sleep SLEEP_SECONDS
             # Do stuff, maybe click more links.
             product = page.content.match(/data-product="(.+?)"/)[1].gsub("&quot;", '"')
             product = JSON.parse(product)

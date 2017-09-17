@@ -203,3 +203,6 @@ Try 'rm --help' for more information.
 Mechanize::ResponseCodeError: 403 => Net::HTTPForbidden for https://www.therealreal.com/sales/new-arrivals-fine-watches-1449?taxons%5B%5D=760&page=1 -- unhandled response
 rm: missing operand
 Try 'rm --help' for more information.
+/usr/local/rvm/rubies/ruby-2.3.3/lib/ruby/site_ruby/2.3.0/rubygems/core_ext/kernel_require.rb:55:in `require': cannot load such file -- ./proxies.rb (LoadError)
+	from /usr/local/rvm/rubies/ruby-2.3.3/lib/ruby/site_ruby/2.3.0/rubygems/core_ext/kernel_require.rb:55:in `require'
+	from /root/scraper/scraper.rb:10:in `<main>'
