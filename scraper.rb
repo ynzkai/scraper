@@ -35,13 +35,12 @@ class Scraper < Mechanize
     @current_proxy_index = 0
     @get_count = 1
 
-:qa
     create_table
-
   end
 
   def get(uri, parameters = [], referer = nil, headers = {})
     isFailed = false
+    set_proxy_count = 0
     begin
       if @get_count % (ITEMS_PER_PROXY+1) == 0 or isFailed
         @current_proxy_index = 0 if @current_proxy_index >= Proxies.size
@@ -49,15 +48,16 @@ class Scraper < Mechanize
         prompt "set proxy IP: #{Proxies[@current_proxy_index]}"
         @current_proxy_index += 1
         @get_count = 1 unless isFailed
+	set_proxy_count += 1
       end
       begin
         _page = super
         isFailed = _page.nil?
       rescue => e
-        puts e.message
+        $stderr.puts "#{e.class}: #{e.message}"
         isFailed = true
       end
-    end while isFailed
+    end while isFailed && set_proxy_count < Proxies.size*2
     @get_count += 1
     _page
   end
