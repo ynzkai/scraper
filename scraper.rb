@@ -12,6 +12,7 @@ require './proxies.rb'
 class Scraper < Mechanize
   Dbname = "data.db"
   SLEEP_SECONDS = 1
+  ITEMS_PER_PROXY = 5
 
   Proxies = ::Proxies
 
@@ -40,22 +41,23 @@ class Scraper < Mechanize
   end
 
   def get(uri, parameters = [], referer = nil, headers = {})
-    get_faile = false
+    isFailed = false
     begin
-      if @get_count % 6 == 0 or get_faile
-        index = @current_proxy_index >= Proxies.size ? 0 : @current_proxy_index
-        set_proxy(*Proxies[index])
-        prompt "set proxy IP: #{Proxies[index][0]}"
+      if @get_count % (ITEMS_PER_PROXY+1) == 0 or isFailed
+        @current_proxy_index = 0 if @current_proxy_index >= Proxies.size
+        set_proxy(*Proxies[@current_proxy_index])
+        prompt "set proxy IP: #{Proxies[@current_proxy_index]}"
         @current_proxy_index += 1
-        @get_count = 1
+        @get_count = 1 unless isFailed
       end
       begin
         _page = super
-        get_faile = _page.nil?
+        isFailed = _page.nil?
       rescue => e
         puts e.message
+        isFailed = true
       end
-    end while get_faile
+    end while isFailed
     @get_count += 1
     _page
   end
