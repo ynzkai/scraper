@@ -47,7 +47,7 @@ Proxies.each do |proxy|
   time = Benchmark.realtime { |x| _page = scraper.test_proxy url, proxy }
   result = _page.nil? ? "Bad" : "Ok"
 
-  proxies.push [proxy[0], result, time]
+  proxies.push ["\"#{proxy[0]}\"", proxy[1], "nil", "nil", result, time]
 end
 
 puts "Done!"
